@@ -21,3 +21,4 @@ class ChatThread(Base):
     )
 
     messages = relationship("ChatMessage", back_populates="thread", cascade="all, delete-orphan")
+    attachments = relationship("ChatAttachment", back_populates="thread", cascade="all, delete-orphan")

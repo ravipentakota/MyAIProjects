@@ -22,3 +22,4 @@ class ChatMessage(Base):
     )
 
     thread = relationship("ChatThread", back_populates="messages")
+    attachments = relationship("ChatAttachment", back_populates="message")

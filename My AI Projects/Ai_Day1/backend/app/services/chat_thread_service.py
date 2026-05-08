@@ -16,6 +16,8 @@ from app.schemas.chat_thread import (
     ChatThreadResponse,
     ChatThreadUpdate,
 )
+from app.services.attachment_upload_service import attachment_upload_service
+from app.services.conversation_memory_service import conversation_memory_service
 from app.services.thread_naming_service import thread_naming_service
 
 
@@ -35,6 +37,7 @@ def _to_message_response(message: ChatMessage) -> ChatMessageResponse:
         role=message.role,
         content=message.content,
         created_at=message.created_at.isoformat(),
+        attachments=[],
     )
 
 
@@ -58,7 +61,7 @@ def _generate_litellm_reply(
         }
     ]
 
-    for message in history[-12:]:
+    for message in history:
         messages_payload.append(
             {
                 "role": message.role,
@@ -105,6 +108,15 @@ def _generate_litellm_reply(
 
 class ChatThreadService:
     """Service for chat thread management backed by database tables."""
+
+    async def _with_attachments(
+        self,
+        db: AsyncSession,
+        messages: list[ChatMessageResponse],
+    ) -> list[ChatMessageResponse]:
+        for message in messages:
+            message.attachments = await attachment_upload_service.list_message_attachments(db=db, message_id=message.id)
+        return messages
 
     async def _ensure_user_exists(self, db: AsyncSession, user_id: str) -> None:
         """Create a lightweight local user when chat APIs are used without OAuth."""
@@ -170,7 +182,8 @@ class ChatThreadService:
         rows = await db.scalars(
             select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at.asc())
         )
-        return [_to_message_response(item) for item in rows.all()]
+        messages = [_to_message_response(item) for item in rows.all()]
+        return await self._with_attachments(db=db, messages=messages)
 
     async def send_message(
         self,
@@ -184,14 +197,24 @@ class ChatThreadService:
         if not thread:
             raise ValueError("Thread not found")
 
-        message_rows = await db.scalars(
-            select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at.asc())
+        persisted_memory = await conversation_memory_service.get_recent_thread_messages(
+            db=db,
+            thread_id=thread_id,
         )
-        history = [_to_message_response(item) for item in message_rows.all()]
+        history = conversation_memory_service.resolve_context(
+            persisted_history=persisted_memory,
+            payload_history=payload.history,
+        )
 
         user_message = ChatMessage(thread_id=thread_id, role="user", content=payload.content)
         db.add(user_message)
         await db.flush()
+        await attachment_upload_service.attach_to_message(
+            db=db,
+            thread_id=thread_id,
+            message_id=user_message.id,
+            attachment_ids=payload.attachment_ids or [],
+        )
 
         assistant_content = _generate_litellm_reply(
             user_input=payload.content,
@@ -207,10 +230,14 @@ class ChatThreadService:
 
         await db.commit()
 
+        await conversation_memory_service.prune_thread_messages(db=db, thread_id=thread_id)
+        await db.commit()
+
         rows = await db.scalars(
             select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at.asc())
         )
-        return [_to_message_response(item) for item in rows.all()]
+        messages = [_to_message_response(item) for item in rows.all()]
+        return await self._with_attachments(db=db, messages=messages)
 
 
 chat_thread_service = ChatThreadService()

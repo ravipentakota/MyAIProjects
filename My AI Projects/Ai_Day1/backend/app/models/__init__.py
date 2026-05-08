@@ -1,6 +1,7 @@
 """ORM model exports."""
+from app.models.chat_attachment import ChatAttachment
 from app.models.chat_message import ChatMessage
 from app.models.chat_thread import ChatThread
 from app.models.user import User
 
-__all__ = ["User", "ChatThread", "ChatMessage"]
+__all__ = ["User", "ChatThread", "ChatMessage", "ChatAttachment"]

@@ -16,4 +16,31 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  attachments: ChatAttachment[];
+}
+
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatAttachment {
+  id: string;
+  threadId: string;
+  messageId: string | null;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  attachmentType: 'image' | 'video' | 'table' | 'formula' | 'code' | 'document';
+  createdAt: string;
+  contentUrl: string;
+}
+
+export interface PendingAttachment {
+  clientId: string;
+  file: File;
+  uploadedAttachmentId?: string;
+  progress: number;
+  status: 'queued' | 'uploading' | 'uploaded' | 'error';
+  errorMessage?: string;
 }

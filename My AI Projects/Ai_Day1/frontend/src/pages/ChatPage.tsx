@@ -5,19 +5,25 @@ import { ChatInput } from '../components/chat/ChatInput';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ThreadSidebar } from '../components/chat/ThreadSidebar';
 import { useAuth } from '../hooks/useAuth';
+import { attachmentService } from '../services/attachmentService';
 import { chatThreadService } from '../services/chatThreadService';
-import type { ChatMessage, ChatThread } from '../types';
+import type { ChatMessage, ChatThread, ConversationTurn } from '../types';
 
 export function ChatPage() {
   const { user, clearSession } = useAuth();
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesByThread, setMessagesByThread] = useState<Record<string, ChatMessage[]>>({});
   const [isSending, setIsSending] = useState(false);
 
   const activeThread = useMemo(
     () => threads.find((thread) => thread.id === activeThreadId) ?? null,
     [threads, activeThreadId],
+  );
+
+  const activeMessages = useMemo(
+    () => (activeThreadId ? messagesByThread[activeThreadId] ?? [] : []),
+    [activeThreadId, messagesByThread],
   );
 
   useEffect(() => {
@@ -35,13 +41,22 @@ export function ChatPage() {
 
   useEffect(() => {
     if (!activeThreadId) {
-      setMessages([]);
       return;
     }
     chatThreadService
       .listMessages(activeThreadId)
-      .then((items) => setMessages(items))
-      .catch(() => setMessages([]));
+      .then((items) =>
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [activeThreadId]: items,
+        })),
+      )
+      .catch(() =>
+        setMessagesByThread((prev) => ({
+          ...prev,
+          [activeThreadId]: [],
+        })),
+      );
   }, [activeThreadId]);
 
   async function handleCreateThread() {
@@ -49,24 +64,41 @@ export function ChatPage() {
     const created = await chatThreadService.createThread(user.id);
     setThreads((prev) => [created, ...prev]);
     setActiveThreadId(created.id);
-    setMessages([]);
+    setMessagesByThread((prev) => ({ ...prev, [created.id]: [] }));
   }
 
-  async function handleSend(content: string) {
-    let threadId = activeThreadId;
-    if (!threadId) {
-      if (!user) return;
-      const created = await chatThreadService.createThread(user.id);
-      setThreads((prev) => [created, ...prev]);
-      setActiveThreadId(created.id);
-      threadId = created.id;
-    }
+  async function ensureThread(): Promise<string | null> {
+    if (activeThreadId) return activeThreadId;
+    if (!user) return null;
+    const created = await chatThreadService.createThread(user.id);
+    setThreads((prev) => [created, ...prev]);
+    setActiveThreadId(created.id);
+    setMessagesByThread((prev) => ({ ...prev, [created.id]: [] }));
+    return created.id;
+  }
+
+  async function handleSend(content: string, attachmentIds: string[]) {
+    const threadId = await ensureThread();
     if (!threadId) return;
 
     setIsSending(true);
     try {
-      const nextMessages = await chatThreadService.sendMessage(threadId, content, user?.email);
-      setMessages(nextMessages);
+      const threadMessages = messagesByThread[threadId] ?? [];
+      const history: ConversationTurn[] = threadMessages
+        .slice(-10)
+        .map((item) => ({ role: item.role, content: item.content }));
+
+      const nextMessages = await chatThreadService.sendMessage(
+        threadId,
+        content,
+        user?.email,
+        history,
+        attachmentIds,
+      );
+      setMessagesByThread((prev) => ({
+        ...prev,
+        [threadId as string]: nextMessages,
+      }));
 
       if (user) {
         const refreshed = await chatThreadService.listThreads(user.id);
@@ -105,8 +137,15 @@ export function ChatPage() {
             Sign out
           </button>
         </header>
-        <ChatWindow messages={messages} />
-        <ChatInput onSend={handleSend} disabled={isSending} />
+        <ChatWindow messages={activeMessages} />
+        <ChatInput
+          activeThreadId={activeThreadId}
+          onEnsureThread={ensureThread}
+          onSend={handleSend}
+          onUploadAttachment={attachmentService.uploadAttachment}
+          onDeleteAttachment={attachmentService.deleteAttachment}
+          disabled={isSending}
+        />
       </div>
     </div>
   );

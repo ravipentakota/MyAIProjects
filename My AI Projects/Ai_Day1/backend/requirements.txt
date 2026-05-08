@@ -8,3 +8,4 @@ asyncpg
 bcrypt
 PyJWT
 email-validator
+python-multipart

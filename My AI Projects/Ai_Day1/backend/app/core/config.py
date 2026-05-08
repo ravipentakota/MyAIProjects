@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
+    STORAGE_BACKEND: str = "local"
+    UPLOAD_DIR: str = "./uploads"
+    MAX_UPLOAD_MB: int = 20
 
 
 settings = Settings()
