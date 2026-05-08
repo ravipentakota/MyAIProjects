@@ -117,12 +117,24 @@ async def google_callback(
             detail={"error": "google_oauth_failed", "message": str(exc)},
         ) from exc
 
+    # Issue JWT cookie for authenticated user
+    token = auth_service.create_access_token(user_id=user.id, email=user.email)
     frontend_base = (state or settings.FRONTEND_URL).strip() or "http://localhost:5173"
 
     separator = "&" if "?" in frontend_base else "?"
     query = urlencode({"oauth_user_id": user.id, "oauth_email": user.email})
     target = f"{frontend_base}{separator}{query}"
-    return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+    
+    redirect_response = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+    redirect_response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=settings.JWT_EXPIRE_MINUTES * 60,
+    )
+    return redirect_response
 
 
 @router.get("/me", response_model=UserResponse)
