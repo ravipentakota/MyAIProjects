@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../types';
+﻿import type { ChatMessage } from "../../types";
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -12,9 +12,19 @@ export function ChatWindow({ messages }: ChatWindowProps) {
       ) : (
         <div className="space-y-4">
           {messages.map((message) => (
-            <div key={message.id} className="rounded-md border border-gray-200 p-3 text-sm">
-              <p className="font-medium">{message.role}</p>
-              <p>{message.content}</p>
+            <div
+              key={message.id}
+              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-xs rounded-lg p-3 text-sm ${
+                  message.role === "user"
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-200 text-gray-900"
+                }`}
+              >
+                <p className="text-justify">{message.content}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -22,3 +32,4 @@ export function ChatWindow({ messages }: ChatWindowProps) {
     </main>
   );
 }
+
